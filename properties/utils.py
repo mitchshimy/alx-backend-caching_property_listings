@@ -1,13 +1,27 @@
-from django.core.cache import cache
-from .models import Property
+import logging
+from django_redis import get_redis_connection
 
-def get_all_properties():
+logger = logging.getLogger(__name__)
+
+def get_redis_cache_metrics():
     """
-    Retrieve all properties from the cache if available,
-    else fetch from DB and store in cache for 1 hour.
+    Retrieves Redis cache hit/miss statistics and calculates the hit ratio.
+    Logs and returns a dictionary of metrics.
     """
-    properties = cache.get('all_properties')
-    if properties is None:
-        properties = list(Property.objects.all().values('title', 'description', 'price', 'location', 'created_at'))
-        cache.set('all_properties', properties, timeout=3600)  # cache for 1 hour
-    return properties
+    redis_conn = get_redis_connection("default")
+    info = redis_conn.info("stats")
+
+    hits = info.get("keyspace_hits", 0)
+    misses = info.get("keyspace_misses", 0)
+
+    total = hits + misses
+    hit_ratio = (hits / total) if total > 0 else None
+
+    metrics = {
+        "keyspace_hits": hits,
+        "keyspace_misses": misses,
+        "hit_ratio": round(hit_ratio, 4) if hit_ratio is not None else "N/A"
+    }
+
+    logger.info(f"Redis Cache Metrics: {metrics}")
+    return metrics
